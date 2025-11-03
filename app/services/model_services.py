@@ -8,7 +8,7 @@ from huggingface_hub.utils import (
     # HfHubModelPermissionError,
     # HfHubRateLimitExceededError,
 )
-from huggingface_hub import InferenceClient
+from huggingface_hub import InferenceClient, HfApi
 from huggingface_hub.errors import HfHubHTTPError, HFValidationError
 import logging
 logger = logging.getLogger(__name__)
@@ -28,17 +28,15 @@ class ModelServiceExceptionHandler:
             return "An unknown error occurred while generating the response. Please try again later or choose a different model."
 
 class ModelService(ModelServiceExceptionHandler):
-    def __init__(self, model: str, hf_token: str, provider: str):
+    def __init__(self, hf_token: str):
         self.client = InferenceClient(
-            provider=provider,
             api_key=hf_token,
         )
-        self.model = model
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str, model: str) -> str:
         try:
             completion = self.client.chat.completions.create(
-                model=self.model,
+                model=model,
                 messages=[
                     {
                         "role": "user",
@@ -49,5 +47,15 @@ class ModelService(ModelServiceExceptionHandler):
             return completion.choices[0].message['content']
         except Exception as e:
             logger.error(f"Error in generate_text from hugging face: {e}", exc_info=True)
+            # Use the handler to get a user-friendly message
+            raise RuntimeError(self.handle_exception(e))
+    
+    def list_served_models(self) -> list:
+        try:
+            api = HfApi() 
+            served_models = api.list_models(inference="warm", limit=200)
+            return [model.modelId for model in served_models]
+        except Exception as e:
+            logger.error(f"Error in list_served_models from hugging face: {e}", exc_info=True)
             # Use the handler to get a user-friendly message
             raise RuntimeError(self.handle_exception(e))
